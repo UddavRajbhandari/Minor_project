@@ -1,0 +1,13 @@
+                     precision    recall  f1-score   support
+
+barbell biceps curl       0.88      0.92      0.90        24
+        hammer curl       0.83      0.62      0.71         8
+       lat pulldown       0.90      1.00      0.95        18
+      lateral raise       0.94      1.00      0.97        15
+            pull Up       1.00      0.80      0.89        10
+            push-up       1.00      1.00      1.00        23
+     shoulder press       1.00      1.00      1.00         6
+
+           accuracy                           0.93       104
+          macro avg       0.94      0.91      0.92       104
+       weighted avg       0.93      0.93      0.93       104
