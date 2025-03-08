@@ -63,7 +63,7 @@ class RealTimeProcessor:
         }
         self.last_prediction = None  # will store an integer prediction index
         self.last_motion = 0.0
-        
+        self.last_landmarks = None  # Store the most recent landmarks
     def reset_buffer(self):
         self.frame_buffer.clear()
         
@@ -118,8 +118,10 @@ class RealTimeProcessor:
                      for lm in results.pose_landmarks.landmark]
                 ).flatten()
                 normalized = self.normalize_landmarks(landmarks)
+                self.last_landmarks = landmarks  # Update last_landmarks
             else:
                 normalized = np.zeros(33 * 4)  # 132 values
+                self.last_landmarks = None
             
             self.frame_buffer.append(normalized)
             self.last_motion = self.calculate_motion(self.frame_buffer)
@@ -184,18 +186,168 @@ class RealTimeProcessor:
             st.error(f"Prediction error: {str(e)}")
             return None, 0.0
 
-    def generate_feedback(self, exercise):
-        """Generate real-time feedback based on exercise type."""
+    def generate_feedback(self, exercise, landmarks=None):
+        """Generate real-time feedback based on exercise type and user performance."""
+        if landmarks is None or landmarks.size == 0:
+            return "Maintain proper form and control your movements."
+
         feedback_map = {
-            'push-up': "Keep your back straight and lower your chest to the floor.",
-            'barbell biceps curl': "Keep your elbows close to your body and avoid swinging.",
-            'pull Up': "Pull your chin above the bar and lower yourself slowly.",
-            'hammer curl': "Maintain controlled movement and avoid body swinging.",
-            'lat pulldown': "Keep your torso upright and pull the bar to your chest.",
-            'lateral raise': "Maintain slight elbow bend and control the weight.",
-            'shoulder press': "Keep your core engaged and avoid arching your back."
+            'push-up': self._generate_pushup_feedback(landmarks),
+            'barbell biceps curl': self._generate_bicep_curl_feedback(landmarks),
+            'pull Up': self._generate_pullup_feedback(landmarks),
+            'hammer curl': self._generate_hammer_curl_feedback(landmarks),
+            'lat pulldown': self._generate_lat_pulldown_feedback(landmarks),
+            'lateral raise': self._generate_lateral_raise_feedback(landmarks),
+            'shoulder press': self._generate_shoulder_press_feedback(landmarks)
         }
         return feedback_map.get(exercise, "Maintain proper form and control your movements.")
+
+    def _generate_pushup_feedback(self, landmarks):
+        """Generate feedback for push-ups."""
+        if landmarks is None or landmarks.size == 0:
+            return "Keep your back straight and lower your chest to the floor."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check if the chest is close to the floor
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+        left_elbow = landmarks[13][:3]     # Left elbow landmark (x, y, z)
+        left_wrist = landmarks[15][:3]     # Left wrist landmark (x, y, z)
+
+        # Calculate elbow angle
+        elbow_angle = self._calculate_angle(left_shoulder, left_elbow, left_wrist)
+
+        if elbow_angle > 90:
+            return "Lower your chest closer to the floor."
+        elif elbow_angle < 60:
+            return "Don't go too low; maintain a 90-degree angle at your elbows."
+        else:
+            return "Great form! Keep your back straight and maintain control."
+
+    def _generate_bicep_curl_feedback(self, landmarks):
+        """Generate feedback for bicep curls."""
+        if landmarks is None or landmarks.size == 0:
+            return "Keep your elbows close to your body and avoid swinging."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check if elbows are stationary
+        left_elbow = landmarks[13][:3]  # Left elbow landmark (x, y, z)
+        right_elbow = landmarks[14][:3]  # Right elbow landmark (x, y, z)
+
+        # Calculate elbow movement
+        elbow_movement = np.linalg.norm(left_elbow - right_elbow)
+
+        if elbow_movement > 0.1:
+            return "Keep your elbows stationary and avoid swinging."
+        else:
+            return "Great job! Keep your elbows close to your body."
+    def _generate_pullup_feedback(self, landmarks):
+        """Generate feedback for pull-ups."""
+        if landmarks is None or landmarks.size == 0:
+            return "Pull your chin above the bar and lower yourself slowly."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check if chin is above the bar
+        left_wrist = landmarks[15][:3]  # Left wrist landmark (x, y, z)
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+
+        if left_wrist[1] > left_shoulder[1]:  # Check if wrist is above shoulder
+            return "Pull your chin above the bar."
+        else:
+            return "Great job! Lower yourself slowly for the next rep."
+
+    def _generate_hammer_curl_feedback(self, landmarks):
+        """Generate feedback for hammer curls."""
+        if landmarks is None or landmarks.size == 0:
+            return "Maintain controlled movement and avoid body swinging."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check for body swinging
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+        right_shoulder = landmarks[12][:3]  # Right shoulder landmark (x, y, z)
+
+        # Calculate shoulder movement
+        shoulder_movement = np.linalg.norm(left_shoulder - right_shoulder)
+
+        if shoulder_movement > 0.1:
+            return "Avoid swinging your body; focus on controlled movement."
+        else:
+            return "Great form! Keep your movements controlled."
+
+    def _generate_lat_pulldown_feedback(self, landmarks):
+        """Generate feedback for lat pulldowns."""
+        if landmarks is None or landmarks.size == 0:
+            return "Keep your torso upright and pull the bar to your chest."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check if bar is pulled to chest
+        left_wrist = landmarks[15][:3]  # Left wrist landmark (x, y, z)
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+
+        if left_wrist[1] > left_shoulder[1]:  # Check if wrist is above shoulder
+            return "Pull the bar closer to your chest."
+        else:
+            return "Great job! Keep your torso upright."
+
+    def _generate_lateral_raise_feedback(self, landmarks):
+        """Generate feedback for lateral raises."""
+        if landmarks is None or landmarks.size == 0:
+            return "Maintain slight elbow bend and control the weight."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check elbow bend
+        left_elbow = landmarks[13][:3]  # Left elbow landmark (x, y, z)
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+        left_wrist = landmarks[15][:3]  # Left wrist landmark (x, y, z)
+
+        # Calculate elbow angle
+        elbow_angle = self._calculate_angle(left_shoulder, left_elbow, left_wrist)
+
+        if elbow_angle < 150:
+            return "Maintain a slight bend in your elbows."
+        else:
+            return "Great form! Control the weight as you lower your arms."
+
+    def _generate_shoulder_press_feedback(self, landmarks):
+        """Generate feedback for shoulder presses."""
+        if landmarks is None or landmarks.size == 0:
+            return "Keep your core engaged and avoid arching your back."
+
+        # Reshape landmarks to (33, 4)
+        landmarks = landmarks.reshape(-1, 4)
+
+        # Example: Check for back arching
+        left_shoulder = landmarks[11][:3]  # Left shoulder landmark (x, y, z)
+        left_hip = landmarks[23][:3]  # Left hip landmark (x, y, z)
+
+        if left_shoulder[1] < left_hip[1]:  # Check if shoulders are above hips
+            return "Avoid arching your back; engage your core."
+        else:
+            return "Great job! Keep your core engaged."
+
+    def _calculate_angle(self, a, b, c):
+        """Calculate the angle between three points."""
+        a = np.array(a)
+        b = np.array(b)
+        c = np.array(c)
+
+        ba = a - b
+        bc = c - b
+
+        cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+        angle = np.arccos(cosine_angle)
+        return np.degrees(angle)
 
 def main():
     st.title("Upper Body Fitness Coach")
@@ -221,13 +373,13 @@ def run_webcam(processor):
     
     # Use Streamlit session state to control webcam start/stop
     if 'camera_on' not in st.session_state:
-         st.session_state.camera_on = False
+        st.session_state.camera_on = False
 
     col1, col2 = st.columns(2)
     if col1.button("Start Camera"):
-         st.session_state.camera_on = True
+        st.session_state.camera_on = True
     if col2.button("Stop Camera"):
-         st.session_state.camera_on = False
+        st.session_state.camera_on = False
 
     if st.session_state.camera_on:
         processor.reset_buffer()
@@ -237,12 +389,22 @@ def run_webcam(processor):
         feedback_placeholder = st.empty()  
         last_pred_time = time.time()
         
+        # Add frame skipping and lower resolution
+        frame_skip = 2  # Process every 2nd frame
+        frame_counter = 0
+
         try:
             while cap.isOpened() and st.session_state.camera_on:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                    
+
+                frame_counter += 1
+                if frame_counter % frame_skip != 0:
+                    continue  # Skip this frame
+
+                # Lower resolution for faster processing
+                frame = cv2.resize(frame, (320, 240))
                 success, processed_frame = processor.process_frame(frame)
                 img_placeholder.image(processed_frame, channels="BGR")
                 
@@ -254,14 +416,14 @@ def run_webcam(processor):
                             f"**Exercise:** {exercise}<br>**Confidence:** {confidence:.1%}",
                             unsafe_allow_html=True
                         )
-                        feedback = processor.generate_feedback(exercise)
+                        feedback = processor.generate_feedback(exercise, processor.last_landmarks)
                         feedback_placeholder.markdown(
                             f"**Feedback:** {feedback}",
                             unsafe_allow_html=True
                         )
                     last_pred_time = time.time()
                 
-                time.sleep(0.01)
+                time.sleep(0.01)  # Small delay to prevent overloading
         except Exception as e:
             st.error(f"Webcam error: {str(e)}")
         finally:
@@ -309,7 +471,7 @@ def process_uploaded_video(path, processor):
                         f"**Detected:** {exercise}<br>**Confidence:** {confidence:.1%}",
                         unsafe_allow_html=True
                     )
-                    feedback = processor.generate_feedback(exercise)
+                    feedback = processor.generate_feedback(exercise,processor.last_landmarks)
                     feedback_placeholder.markdown(
                         f"**Feedback:** {feedback}",
                         unsafe_allow_html=True
